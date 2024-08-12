@@ -10,13 +10,27 @@ library(cachem)
 library(shinyBS)
 library(DT)
 library(testthat)
+library(forcats)
+library(dplyr)
 library(ggiraph)
+library(tidyr)
 library(shinyWidgets)  # For enhanced input widgets
-
+library(stringr)
+library(sf)
+library(rnaturalearth)
+library(raster)
+library(cowplot)
+library(patchwork)
 # Create a cache
 cache <- cachem::cache_mem()
 
+# 
+ne_sf <- ne_countries(returnclass = "sf", country = "Bosnia and Herzegovina", scale = 10)
+
+
 source("carousel_panel.R")
+
+source(here("R", "functions.R"))
 
 # Panel div for visualization
 # override the currently broken definition in shinyLP version 1.1.0
@@ -25,6 +39,9 @@ panel_div <- function(class_type, content) {
       div(class = "panel-body", content)
   )
 }
+
+
+
 
 # Assuming you have a CSV file with the list of species
 # species_list <- read.csv("amphibian_reptile_species.csv", stringsAsFactors = FALSE)$species_name
@@ -65,70 +82,9 @@ species_data <- data.frame(
 # Create a grouped list for selectize input
 species_list <- split(species_data$name, species_data$class)
 
-
-# Function to get GBIF data with error handling
-get_gbif_data <- function(species_name, limit) {
-  tryCatch({
-    key <- name_suggest(q = species_name, rank = 'species')$data$key[1]
-    if (is.null(key)) {
-      stop("Species not found in GBIF database.")
-    }
-    data <- occ_search(taxonKey = key, limit = limit, country = "BA", hasCoordinate = TRUE, hasGeospatialIssue = FALSE)$data
-    if (nrow(data) == 0) {
-      stop("No occurrence data found for this species.")
-    }
-    data #%>% select(species, decimalLongitude, decimalLatitude)
-  }, error = function(e) {
-    stop(paste("Error retrieving GBIF data:", e$message))
-  })
-}
-
-# You may also want to update your get_gbif_data function to handle the selected species name:
-# get_gbif_data <- function(species_name, limit) {
-#   tryCatch({
-#     # Remove any group names that might be selected
-#     species_name <- sub("^(Amphibia|Reptilia): ", "", species_name)
-#     
-#     key <- name_suggest(q = species_name, rank = 'species')$data$key[1]
-#     if (is.null(key)) {
-#       stop("Species not found in GBIF database.")
-#     }
-#     data <- occ_search(taxonKey = key, limit = limit, hasCoordinate = TRUE)$data
-#     if (nrow(data) == 0) {
-#       stop("No occurrence data found for this species.")
-#     }
-#     data %>% select(species, decimalLongitude, decimalLatitude)
-#   }, error = function(e) {
-#     stop(paste("Error retrieving GBIF data:", e$message))
-#   })
-# }
-# Memoise the GBIF data retrieval function
-get_gbif_data_cached <- memoise(get_gbif_data, cache = cache)
-
-# Function to extract climate data with error handling
-extract_climate_data <- function(points, raster_path) {
-  tryCatch({
-    if (!file.exists(raster_path)) {
-      stop("Climate data file not found.")
-    }
-    r <- rast(raster_path)
-    terra::extract(r, points)
-  }, error = function(e) {
-    stop(paste("Error extracting climate data:", e$message))
-  })
-}
-
 # Memoise the climate data extraction function
 extract_climate_data_cached <- memoise(extract_climate_data, cache = cache)
 
-# Function to sample large datasets
-sample_data <- function(data, max_samples = 1000) {
-  if (nrow(data) > max_samples) {
-    data[sample(nrow(data), max_samples), ]
-  } else {
-    data
-  }
-}
 
 # UI
 ui <- fluidPage(
@@ -163,11 +119,13 @@ ui <- fluidPage(
       tabsetPanel(
         tabPanel("Map", leafletOutput("map")),
         tabPanel("Climate Comparison", girafeOutput("climate_plot", width = "75%")),
+        # tabPanel("Climate Comparison", plotOutput("climate_plot")),
+        
         tabPanel("Summary", verbatimTextOutput("summary")),
-        tabPanel("Data Table", DTOutput("data_table")),
-        tabPanel("Advanced Analysis", 
-                 plotOutput("advanced_plot"),
-                 verbatimTextOutput("advanced_summary"))
+        tabPanel("Data Table", DTOutput("data_table"))
+        # tabPanel("Advanced Analysis", 
+        #          plotOutput("advanced_plot"),
+        #          verbatimTextOutput("advanced_summary"))
       )
     )
   )
@@ -195,35 +153,41 @@ server <- function(input, output, session) {
     withProgress(message = 'Retrieving and processing data...', value = 0, {
       tryCatch({
         # Get GBIF data
-        species_data <- get_gbif_data_cached(input$species_name, input$n_records)
-        incProgress(0.3)
+        # species_data <- get_gbif_data_cached(input$species_name, input$n_records)
+        # incProgress(0.3)
+        # 
+        # 
+        # # Extract current climate data
+        # current_path <- here("data", "chelsa", "current", paste0(input$chelsa_var, ".tif"))
+        # current_values <- extract_climate_data_cached(species_data[, c("decimalLongitude", "decimalLatitude")], current_path)
+        # incProgress(0.3)
+        # 
+        # # Extract future climate data (2070 SSP1)
+        # future_path <- here("data", "chelsa", "future", paste0(input$chelsa_var, ".tif"))
+        # future_values <- extract_climate_data_cached(species_data[, c("decimalLongitude", "decimalLatitude")], future_path)
         
-        # Sample data if it's too large
-        species_data <- sample_data(species_data)
-        
-        # Extract current climate data
-        current_path <- here("data", "chelsa", "current", paste0(input$chelsa_var, ".tif"))
-        current_values <- extract_climate_data_cached(species_data[, c("decimalLongitude", "decimalLatitude")], current_path)
-        incProgress(0.3)
-        
-        # Extract future climate data (2070 SSP1)
-        future_path <- here("data", "chelsa", "future", paste0(input$chelsa_var, ".tif"))
-        future_values <- extract_climate_data_cached(species_data[, c("decimalLongitude", "decimalLatitude")], future_path)
-        incProgress(0.3)
+        result <- prepare_climate_trajectory_data(
+          species_name = input$species_name,
+          bio_var = readr::parse_number(input$chelsa_var),
+          ssp = "ssp370",
+          gcm = "ipsl-cm6a-lr",
+          limit = input$n_records
+        )
+        incProgress(0.7)
         
         # Combine all data
-        combined_data <- species_data %>%
-          mutate(current_climate = current_values[,2],
-                 future_climate = future_values[,2]) |> 
-          mutate(
-            label = stringr::str_glue("Species: {species}<br>
-                                       Record: {basisOfRecord}<br>
-                                       Year of record: {year}<br>
-                                       Reference: {references}")
-          )
-        
-        all_data(combined_data)
-        incProgress(0.1)
+        # combined_data <- species_data %>%
+        #   mutate(current_climate = current_values[,2],
+        #          future_climate = future_values[,2]) |> 
+        #   mutate(
+        #     label = stringr::str_glue("Species: {species}<br>
+        #                                Record: {basisOfRecord}<br>
+        #                                Year of record: {year}<br>
+        #                                Reference: {references}")
+        #   )
+        # 
+        all_data(result)
+        incProgress(0.3)
       }, error = function(e) {
         showNotification(paste("Error:", e$message), type = "error")
         all_data(NULL)
@@ -236,31 +200,42 @@ server <- function(input, output, session) {
     req(all_data())
     leaflet(all_data()) %>%
       addTiles() %>%
-      addCircleMarkers(~decimalLongitude, ~decimalLatitude, popup = ~label)
+      addCircleMarkers(~decimalLongitude, ~decimalLatitude, popup = ~species)
   })
   
   # Render climate comparison boxplot
-  output$climate_plot <- renderGirafe({
+  output$climate_plot <- #renderPlot({
+    renderGirafe({
     req(all_data())
     
-    data_long <- all_data() %>%
-      select(species, current_climate, future_climate) %>%
-      tidyr::pivot_longer(cols = c(current_climate, future_climate),
-                          names_to = "period", values_to = "value")
+    raster_data <- load_basic_climate(readr::parse_number(input$chelsa_var))
     
-    p <- ggplot(data_long, aes(x = period, y = value)) +
-      geom_boxplot(aes(fill = period), outlier.shape = NA) +
-      geom_point_interactive(aes(fill = period, data_id = value, tooltip = value), position = position_jitter(width = 0.2), shape = 21) +
-      labs(x = "Period", y = "Climate Value",
-           title = paste("Comparison of", input$chelsa_var, "values"),
-           subtitle = input$species_name) +
-      theme_minimal() +
-      theme(
-        legend.position = "none"
-      ) +
-      scale_fill_brewer(palette = "Set2")
     
-    x <- girafe(ggobj = p)
+    p1 <- plot_climate_trajectory_left(data = all_data(), raster = raster_data, country = ne_sf)
+    
+    p2 <- plot_climate_trajectory_right(data = all_data(), raster = raster_data, country = ne_sf)
+    
+    # data_long <- all_data() %>%
+    #   select(species, current_climate, future_climate) %>%
+    #   tidyr::pivot_longer(cols = c(current_climate, future_climate),
+    #                       names_to = "period", values_to = "value")
+    
+    # p <- ggplot(data_long, aes(x = period, y = value)) +
+    #   geom_boxplot(aes(fill = period), outlier.shape = NA) +
+    #   geom_point_interactive(aes(fill = period, data_id = value, tooltip = value), position = position_jitter(width = 0.2), shape = 21) +
+    #   labs(x = "Period", y = "Climate Value",
+    #        title = paste("Comparison of", input$chelsa_var, "values"),
+    #        subtitle = input$species_name) +
+    #   theme_minimal() +
+    #   theme(
+    #     legend.position = "none"
+    #   ) +
+    #   scale_fill_brewer(palette = "Set2")
+    
+    # x <- girafe(ggobj = p1)
+    # p1
+    x <- girafe(ggobj = (p1 + p2))
+    
     x
   })
   
@@ -270,10 +245,10 @@ server <- function(input, output, session) {
     
     cat("Species:", input$species_name, "\n")
     cat("Number of records:", nrow(all_data()), "\n")
-    cat("Current climate (mean):", mean(all_data()$current_climate, na.rm = TRUE), "\n")
-    cat("Future climate (mean):", mean(all_data()$future_climate, na.rm = TRUE), "\n")
-    cat("Climate change (mean difference):", 
-        mean(all_data()$future_climate - all_data()$current_climate, na.rm = TRUE), "\n")
+    # cat("Current climate (mean):", mean(all_data()$current_climate, na.rm = TRUE), "\n")
+    # cat("Future climate (mean):", mean(all_data()$future_climate, na.rm = TRUE), "\n")
+    # cat("Climate change (mean difference):", 
+    #     mean(all_data()$future_climate - all_data()$current_climate, na.rm = TRUE), "\n")
   })
   
   # Render data table
@@ -283,25 +258,25 @@ server <- function(input, output, session) {
   })
   # ggiraph::renderGirafe()
   # Advanced analysis
-  output$advanced_plot <- renderPlot({
-    req(all_data())
-    ggplot(all_data(), aes(x = current_climate, y = future_climate)) +
-      geom_point(alpha = 0.5) +
-      geom_smooth(method = "lm", color = "red") +
-      geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-      labs(x = "Current Climate", y = "Future Climate",
-           title = paste("Relationship between Current and Future", input$chelsa_var),
-           subtitle = input$species_name) +
-      theme_minimal()
-    
-    
-  })
+  # output$advanced_plot <- renderPlot({
+  #   req(all_data())
+  #   ggplot(all_data(), aes(x = current_climate, y = future_climate)) +
+  #     geom_point(alpha = 0.5) +
+  #     geom_smooth(method = "lm", color = "red") +
+  #     geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  #     labs(x = "Current Climate", y = "Future Climate",
+  #          title = paste("Relationship between Current and Future", input$chelsa_var),
+  #          subtitle = input$species_name) +
+  #     theme_minimal()
+  #   
+  #   
+  # })
   
-  output$advanced_summary <- renderPrint({
-    req(all_data())
-    model <- lm(future_climate ~ current_climate, data = all_data())
-    summary(model)
-  })
+  # output$advanced_summary <- renderPrint({
+  #   req(all_data())
+  #   model <- lm(future_climate ~ current_climate, data = all_data())
+  #   summary(model)
+  # })
   
 }
 
