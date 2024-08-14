@@ -1,0 +1,13 @@
+name: herp_climate_altas
+title: herp_climate_altas
+username: mirzaceng
+account: mirzaceng
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12327801
+bundleId: 8872685
+url: https://mirzaceng.shinyapps.io/herp_climate_altas/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .Rprofile|_targets.R|data/0005364-240626123714530.csv|data/0005364-240626123714530.zip|R/data_processing.R|R/data_retrieval.R|R/visualization.R|README.Rmd|renv.lock|tests/dev.R|tests/testthat.R
