@@ -3,31 +3,33 @@
 
 # ATRA Climate Change Explorer
 
-This Shiny app analyzes herpetofauna biodiversity in Bosnia and
-Herzegovina using GBIF occurrence data and CHELSA climate data.
+You can access the app
+[HERE](https://mirzaceng.shinyapps.io/ATRAClimateChangeExplorer/).
 
-## Setup
+The ATRA Climate Explorer is an interactive tool designed to assess the
+potential impacts of climate change on amphibian and reptile species
+(herpetofauna) in Bosnia and Herzegovina by leveraging open GBIF data.
+This Shiny app is developed and hosted by the Herpetological Association
+of Bosnia and Herzegovina ([BHHU - ATRA](https://www.bhhuatra.com/)). We
+designed to be easily adaptable for different regions and sets of
+species. Users can clone the GitHub repository, modify the configuration
+and data files, and deploy their own version of the app.
 
-1.  Clone this repository
-2.  Install R and RStudio
-3.  Open the project in RStudio
-4.  Run `renv::restore()` to install the required packages
+## How to use the app?
 
-## Running the app
+See detailed instructions in the app’s About page.
 
-Execute `shiny::runApp()` in the R console to run the app locally.
+## How to build my own Climate Change Explorer app?
+
+See detailed instructions in the app’s How to Build Your Own? page.
 
 ## Project Structure
 
 - `app.R`: Main Shiny app file
-- `R/`: Directory containing helper functions
-- `tests/`: Directory for unit tests
+- `R/functions.R`: File containing helper functions
+- `download_data.R`: helper script to download data when adapting the
+  app to custom needs
 - `data/`: Directory for storing data files
-- `www/`: Directory for web assets (images, CSS, etc.)
-
-## Contributing
-
-\[Add contributing guidelines here\]
 
 ## License
 

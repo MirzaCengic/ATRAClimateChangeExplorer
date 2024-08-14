@@ -33,8 +33,8 @@ ne_sf <- st_read(here::here("data", "vector", "country_shapefile.gpkg"))
 # Source functions from the functions.R file
 source(here("R", "functions.R"))
 
-# Assuming you have a CSV file with the list of species
-# species_list <- read.csv("amphibian_reptile_species.csv", stringsAsFactors = FALSE)$species_name
+# Assuming you have a CSV file with the list of species in same format as species_data from functions.R 
+# species_data <- read.csv("species_data.csv", stringsAsFactors = FALSE)
 
 # Prepare species data alphabetically for the dropdown menu
 species_data <- species_data |> 
@@ -170,33 +170,152 @@ ui <- navbarPage(
       column(
         width = 12,
         h2("About This App"),
-        p("This Shiny app allows users to explore GBIF species occurrence data and associated climate information."),
-        p("Use the sidebar on the main page to select a species, specify the number of records to retrieve, and choose a bioclimatic variable for analysis."),
+        p(HTML("The ATRA Climate Explorer is an interactive tool designed to assess the potential impacts of climate change on amphibian and reptile species (herpetofauna) in Bosnia and Herzegovina. This app is developed and hosted by the Herpetological Association of Bosnia and Herzegovina ", 
+               "<a href='https://www.bhhuatra.com/' target='_blank'>(BHHU - ATRA)</a>", ", the leading national association for herpetological research and conservation.")),
+        
+        h3("Purpose and Significance"),
+        p("Many species lack comprehensive climate change impact assessments in their IUCN evaluations, leading to incomplete information for conservation prioritization. This app serves as an exploratory tool to:"),
         tags$ol(
-          tags$li("Select a species from the dropdown menu."),
-          tags$li("Specify the number of occurrence records you want to retrieve."),
-          tags$li("Choose a CHELSA bioclimatic variable for analysis."),
-          tags$li("Click 'Retrieve Data and Analyze' to process the data."),
-          tags$li("Explore the results in the various tabs: Map, Climate Comparison, Summary, and Data Table.")
-          
-          
+          tags$li("Query GBIF data and explore climate change impacts"),
+          tags$li("Provide information to underpin research, conservation efforts, monitoring activities, policy, and decisions"),
+          tags$li("Provide a reproducible framework for similar analyses in other regions")
         ),
-        h3("About SSP climate scenarios"),
-        p("This Shiny app uses three SSP scenarios (Shared Socioeconomic Pathways):"),
-        p(tags$strong("SSP126:"), "This scenario with 2.6 W/m² by the year 2100 is a remake of the optimistic scenario RCP2.6 and was designed with the aim of simulating a development that is compatible with the 2°C target. This scenario assumes climate protection measures being taken."),
-        p(tags$strong("SSP370:"), "With 7 W/m² by the year 2100, this scenario is in the upper-middle part of the full range of scenarios. It was newly introduced after the RCP scenarios, closing the gap between RCP6.0 and RCP8.5."),
-        p(tags$strong("SSP585:"), "With an additional radiative forcing of 8.5 W/m² by the year 2100, this scenario represents the upper boundary of the range of scenarios described in the literature. It can be understood as an update of the CMIP5 scenario RCP8.5, now combined with socioeconomic reasons.")
+        
+        h3("How to Use the App"),
+        tags$ol(
+          tags$li("Species Selection: Choose a species from the dropdown menu. The list includes amphibians and reptiles observed in Bosnia and Herzegovina."),
+          tags$li("Number of Records: Specify the number of occurrence records to retrieve from GBIF (maximum 10,000)."),
+          tags$li(HTML("Data Quality Filters: Select filters to apply to the GBIF data for improved accuracy. These filters use the", 
+                       "<a href='https://docs.ropensci.org/CoordinateCleaner/' target='_blank'>{CoordinateCleaner}</a>", " R package:")),
+          tags$ul(
+            tags$li("Remove zero coordinates: Excludes records with coordinates (0,0)"),
+            tags$li("Remove equal records: Removes duplicate records"),
+            tags$li("Remove centroid records: Excludes records that are country or province centroids"),
+            tags$li("Remove invalid records: Removes records with invalid coordinates"),
+            tags$li("Remove records in capital cities: Excludes records from capital city centers"),
+            tags$li("Remove duplicates: Removes duplicate records based on coordinates"),
+            tags$li("Remove records in urban areas: Excludes records from urban areas"),
+            tags$li("Remove records in sea: Excludes marine records for terrestrial species")
+          ),
+          tags$li("Bioclimatic Variable: Choose a CHELSA bioclimatic variable for analysis."),
+          tags$li("Climate Scenario: Select an SSP (Shared Socioeconomic Pathway) scenario."),
+          tags$li("Run Analysis: Click 'Retrieve Data and Analyze' to process the data. Remember to run the query after each change in settings!"),
+          tags$li("Explore Results: Use the tabs to view the map, climate comparisons, and data table.")
+        ),
+        
+        h3("Data Sources"),
+        h4("1. GBIF (Global Biodiversity Information Facility)"),
+        tags$ul(
+          tags$li(HTML("This app uses the ", 
+                       "<a href='https://techdocs.gbif.org/en/openapi/' target='_blank'>GBIF API</a>", " via the ", 
+                       "<a href='https://docs.ropensci.org/rgbif' target='_blank'>{rgbif}</a>", " R package to retrieve occurrence data.")),
+          tags$li("In this app, we use the occ_search() function for real-time queries. However, it is important to note that creators of rgbif package recommend to use occ_download() function for any serious research. Therefore, we highlight that this app has an exploratory aim and should not be used for serious research."),
+          tags$li(HTML("For further use of GBIF data, we recommend users to consult ", 
+                       "<a href='https://www.gbif.org/citation-guidelines' target='_blank'>GBIF citation guidelines</a>", " for more information."))
+        ),
+        
+        h4("2. CHELSA (Climatologies at High Resolution for the Earth's Land Surface Areas)"),
+        p(HTML("We use ", 
+               "<a href='https://chelsa-climate.org/bioclim/' target='_blank'>CHELSA bioclimate data</a>", 
+               " for current and future climate projections.")),
+        h5("Bioclimatic variables:"),
+        tableOutput("bioclim_table"),
+        
+        h5("SSP Scenarios:"),
+        tags$ul(
+          tags$li("SSP126: Low emissions scenario. This scenario with 2.6 W/m² by the year 2100 is a remake of the optimistic scenario RCP2.6 and was designed with the aim of simulating a development that is compatible with the 2°C target. This scenario assumes climate protection measures being taken."),
+          tags$li("SSP370: Intermediate emissions scenario. With 7 W/m² by the year 2100, this scenario is in the upper-middle part of the full range of scenarios. It was newly introduced after the RCP scenarios, closing the gap between RCP6.0 and RCP8.5."),
+          tags$li("SSP585: High emissions scenario. With an additional radiative forcing of 8.5 W/m² by the year 2100, this scenario represents the upper boundary of the range of scenarios described in the literature. It can be understood as an update of the CMIP5 scenario RCP8.5, now combined with socioeconomic reasons."),
+        ),
+        
+        h5("GCM (General Circulation Model):"),
+        tags$ul(
+          tags$li("Currently, we use the GFDL-ESM4 model."),
+          tags$li("Future updates aim to allow selection from multiple GCMs, including: 'gfdl-esm4', 'ipsl-cm6a-lr', 'mpi-esm1-2-hr', 'mri-esm2-0', 'ukesm1-0-ll'."),
+          tags$li(HTML("See", "<a href='https://chelsa-climate.org/wp-admin/download-page/CHELSA_tech_specification.pdf' target='_blank'>CHELSA techical specification</a>", " for more info"))
+        ),
+        
+        h3("Reproducibility and Transferability"),
+        p("This app is designed to be easily adaptable for different regions and sets of species. Users can clone the GitHub repository, modify the configuration and data files, and deploy their own version of the app. For more information on reproducing the app, please refer to the 'How to build your own?' panel."),
+        
+        h3("About BHHU - ATRA"),
+        p("The Herpetological Association of BiH (BHHU - ATRA) curates a species distribution database with over 11,500 records. These records are being prepared for publication through GBIF, adhering to GBIF's data standards and protocols. This valuable dataset is expected to be available via GBIF within the next year, significantly enhancing the available data for herpetofauna in Bosnia and Herzegovina."),
+        
+        h3("Global Relevance"),
+        p("While focused on Bosnia and Herzegovina, this tool has global significance. By providing open-source code and a reproducible framework, it enables researchers worldwide to create similar applications for their regions of interest. This approach supports GBIF's mission of making biodiversity data freely available for scientific research, conservation, and sustainable development.")
       )
     )
   ),
   # How to build your own app panel
   nav_panel(
-    title = "How to build your own?",
+    title = "How to Build Your Own?",
     fluidRow(
       column(
         width = 12,
-        h2("Tutorial to reproduce"),
-        p("To be filled")
+        h2("How to Build Your Own Climate Change Explorer?"),
+        p("This app is designed to be easily reproducible and adaptable. Whether you want to change the species list, geographic focus, or even the types of data and analyses, you can customize the ATRA Climate Explorer to suit your needs. We have enabled users to change the country and the list of species with minimal changes required. Here's how to get started:"),
+        
+        h3("1. Clone the GitHub Repository"),
+        p(HTML("First, clone the ATRA Climate Explorer repository from GitHub: ",
+               "<a href='https://github.com/MirzaCengic/ATRAClimateChangeExplorer' target='_blank'>https://github.com/MirzaCengic/ATRAClimateChangeExplorer</a>")),
+        p(HTML("If you're new to Git, check out ", 
+               "<a href='https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository' target='_blank'>GitHub's guide</a>", " on cloning repositories. Make sure your system has necessary", 
+               "<a href='https://git-scm.com/book/en/v2/Getting-Started-Installing-Git' target='_blank'> git software installed.</a>")),
+        
+        h3("2. Set Up R and RStudio"),
+        p("To run and modify the app, you'll need R and RStudio:"),
+        tags$ul(
+          tags$li(HTML("Download and install R from ", 
+                       "<a href='https://cran.r-project.org/' target='_blank'>https://cran.r-project.org/</a>")),
+          tags$li(HTML("Download and install RStudio from ", 
+                       "<a href='https://www.rstudio.com/products/rstudio/download/' target='_blank'>https://www.rstudio.com/products/rstudio/download/</a>")),
+          tags$li("Open the .Rproj file directly or via RStudio")
+        ),
+        
+        h3("3. Restore Packages with renv"),
+        p("We use the renv package to manage dependencies. Once you've opened the project in RStudio:"),
+        tags$ul(
+          tags$li("Install renv if you haven't already: ", code("install.packages('renv')")),
+          tags$li("Restore the project's packages by running: ", code("renv::restore()"))
+        ),
+        p(HTML("This ensures you have all the necessary packages at the correct versions. If you run into issues with package rnaturalearthhires, make sure to ", 
+               "<a href='https://github.com/ropensci/rnaturalearthhires' target='_blank'>install it manually</a>.")),
+        
+        h3("4. Customize the App"),
+        p("Modify the app to fit your needs:"),
+        
+        h5("a) Change the species list:"),
+        p("Edit the species_data variable in the functions.R file."),
+        tags$ul(
+          tags$li("The current app format uses 'name' for species names and 'class' for taxonomic class."),
+          tags$li("You can modify this structure as needed for your use case, but ensure that the variable species_list is updated accordingly in the app context.")
+        ),
+        
+        h5("b) Change the geographic focus:"),
+        p("In the download_data.R script, you can modify the geographic focus in two ways:"),
+        tags$ul(
+          tags$li("Change the 'country' variable to your area of interest. Make sure the country name is correct and matches the naming convention in the rnaturalearth package. You can use ", code("getData('ISO3')"), " to see available country names."),
+          tags$li("Alternatively, replace the 'ne_sf' variable with your own simple feature defining the geographic extent.")
+        ),
+        p("Changing the geographic focus will automatically crop the climate data for your region when you run the download_data.R script. Note that this download requires disk space and time, but see the script for more info."),
+        
+        h3("5. Run and Deploy the App"),
+        h5("a) Run locally:"),
+        p("Open app.R in RStudio and click 'Run App' to test it locally."),
+        
+        h5("b) Deploy online:"),
+        tags$ul(
+          tags$li(HTML("Create a free account on ", 
+                       "<a href='https://www.shinyapps.io/' target='_blank'>shinyapps.io</a>")),
+          tags$li(HTML("Use RStudio's built-in ", 
+                       "<a href='https://shiny.posit.co/r/articles/share/shinyapps/' target='_blank'>publishing capabilities</a>", " to deploy your app online"))
+        ),
+        p("Note: The free tier on shinyapps.io includes 1GB of data use, which includes data hosted in the /data folder."),
+        
+        h3("Why is this free and open?"),
+        p("By making this tool open source, we aim to foster collaboration and innovation in biodiversity research. Your modifications and improvements can contribute to better understanding and conservation of species worldwide. Whether you're adapting the app for a different region, adding new species, or incorporating novel analyses, your work builds upon a foundation of open science and shared knowledge. We encourage you to share your modifications, suggest improvements, and collaborate with others in the community."),
+        p(HTML("This project is released under a permissive ", 
+               "<a href='https://opensource.org/license/mit' target='_blank'>MIT license</a>."))
       )
     )
   )
@@ -331,8 +450,20 @@ server <- function(input, output, session) {
       bio_info = bio_info
     )
   })
+  
+  # Render table for About panel
+  output$bioclim_table <- renderTable({
+    data.frame(
+      Shortname = c("bio1", "bio2", "bio3", "bio4", "bio5", "bio6", "bio7", "bio8", "bio9", "bio10", "bio11", "bio12", "bio13", "bio14", "bio15", "bio16", "bio17", "bio18", "bio19"),
+      Longname = c("Mean annual air temperature", "Mean diurnal air temperature range", "Isothermality", "Temperature seasonality", "Mean daily maximum air temperature of the warmest month", "Mean daily minimum air temperature of the coldest month", "Annual range of air temperature", "Mean daily mean air temperatures of the wettest quarter", "Mean daily mean air temperatures of the driest quarter", "Mean daily mean air temperatures of the warmest quarter", "Mean daily mean air temperatures of the coldest quarter", "Annual precipitation amount", "Precipitation amount of the wettest month", "Precipitation amount of the driest month", "Precipitation seasonality", "Mean monthly precipitation amount of the wettest quarter", "Mean monthly precipitation amount of the driest quarter", "Mean monthly precipitation amount of the warmest quarter", "Mean monthly precipitation amount of the coldest quarter"),
+      Unit = c(rep("°C", 11), rep("kg m-2", 8)),
+      Explanation = c("Mean annual daily mean air temperatures averaged over 1 year", "Mean diurnal range of temperatures averaged over 1 year", "Ratio of diurnal variation to annual variation in temperatures", "Standard deviation of the monthly mean temperatures", "The highest temperature of any monthly daily mean maximum temperature", "The lowest temperature of any monthly daily mean maximum temperature", "The difference between the Maximum Temperature of Warmest month and the Minimum Temperature of Coldest month", "The wettest quarter of the year is determined (to the nearest month)", "The driest quarter of the year is determined (to the nearest month)", "The warmest quarter of the year is determined (to the nearest month)", "The coldest quarter of the year is determined (to the nearest month)", "Accumulated precipitation amount over 1 year", "The precipitation of the wettest month", "The precipitation of the driest month", "The Coefficient of Variation is the standard deviation of the monthly precipitation estimates expressed as a percentage of the mean of those estimates (i.e. the annual mean)", "The wettest quarter of the year is determined (to the nearest month)", "The driest quarter of the year is determined (to the nearest month)", "The warmest quarter of the year is determined (to the nearest month)", "The coldest quarter of the year is determined (to the nearest month)")
+    )
+  }, striped = TRUE, bordered = TRUE, hover = TRUE)
+  
+  
   # Render climate summary
-    output$climate_summary <- renderUI({
+  output$climate_summary <- renderUI({
     summary <- climate_change_summary()
     bio_info <- summary$bio_info
     
